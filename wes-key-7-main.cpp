@@ -14,11 +14,13 @@
 #define NUM_OF_THREADS 4
 
 /*
- The code in this file finds the master key for the wes/wes.c file where the master key is hardcoded.
+ The code in this file finds the master key for the wes-key-7 binary file where the master key is hardcoded.
 
  Compile/Run instructions:
-    g++ -O3 main.cpp -o wes-cryptanalysis
-    ./wes-cryptanalysis
+    g++ -O3 wes-key-7-main.cpp -o wes-key-7-cryptanalysis
+    ./wes-key-7-cryptanalysis
+
+    Found a master key of 0x034cd1c408808476
  */
 
 struct highProbabilityDifferential
@@ -378,14 +380,14 @@ std::set< uint32_t > crackKey4()
 
     // [Plaintext 1, Ciphertext 1, P2, C2]
     std::vector< std::vector< uint64_t > > deltaPairs = {
-            { 0xe0a621281e76a643, 0xFF3CCAC4EE3FFC8D, 0x82a021281e76a643, 0x264CD21D883A7D2C },
-            { 0x9d5da5a9eff0f367, 0xF735CA49CF34C3BD, 0xff5ba5a9eff0f367, 0x4AEA5CBF89A04C9F },
-            { 0x1629032bf2d0f365, 0x19CCF3B531745F36, 0x742f032bf2d0f365, 0xBBF9A2B05FE3D496 },
-            { 0xf2265d81fc1bd964, 0xBE9D1520BEA28942, 0x90205d81fc1bd964, 0x61E828D0D8260AE3 },
-            { 0x03a54c0a20e8f05d, 0x59813499F0F5B72C, 0x61a34c0a20e8f05d, 0xCA89424AB5F5360C },
-            { 0x237f61071881097b, 0xCA2FD612D8659769, 0x417961071881097b, 0x9E36963BB4E39EEC },
-            { 0x44a3c3ecbdb612a2, 0xD6F435EF0712C355, 0x26a5c3ecbdb612a2, 0xE1CBDD10429348F7 },
-            { 0x1f27d48d2c0fe9c8, 0x6EF64F5918F4138C, 0x7d21d48d2c0fe9c8, 0x88CB5BCD76E39E0C }
+            { 0xe0a621281e76a643, 0xFA24E58016BDBFB5, 0x82a021281e76a643, 0x2560A060723E3494 },
+            { 0x9d5da5a9eff0f367, 0xA765FE3851F28394, 0xff5ba5a9eff0f367, 0x680C7B901C7108B5 },
+            { 0x1629032bf2d0f365, 0xCE01B84A7D74E1D3, 0x742f032bf2d0f365, 0x5220851B11F4E0F2 },
+            { 0xf2265d81fc1bd964, 0x4AFEA19F2E112BD5, 0x90205d81fc1bd964, 0x6ED32D286887A0F1 },
+            { 0x03a54c0a20e8f05d, 0x9F1332E6E327F88B, 0x61a34c0a20e8f05d, 0x0DDBF4E9A5B4F1AB },
+            { 0x237f61071881097b, 0x01C983E419390E44, 0x417961071881097b, 0x0CE346345CB885E7 },
+            { 0x44a3c3ecbdb612a2, 0x52450CBDCB11CD59, 0x26a5c3ecbdb612a2, 0x87366879AF80427A },
+            { 0x1f27d48d2c0fe9c8, 0x03DA554C93E56CCC, 0x7d21d48d2c0fe9c8, 0x859B625FDF6265EC }
     };
 
     // We know that the input difference to the last round
@@ -533,19 +535,19 @@ std::pair< std::set< uint32_t >, std::set< uint32_t > > crackKey3( const std::se
 
     // [Plaintext 1, Ciphertext 1, P2, C2]
     std::vector< std::vector< uint64_t > > pairs = {
-            { 0x4a28d313c14be57e, 0x0A1EA4A827794303, 0xb5d72cecc14be57e, 0x84EE886538EA684D },
-            { 0xfb870040f62f8a43, 0x12DF803607E99015, 0x0478ffbff62f8a43, 0xACBC31D5C88550BD },
-            { 0xfaa4aa317d1f419c, 0x5D527DA3F87C07F5, 0x055b55ce7d1f419c, 0xFD389A200E034942 },
-            { 0xbfdd81549096fdd5, 0x1B39BCBF5FFF6F7C, 0x40227eab9096fdd5, 0xBAEDE607106F5B4E },
-            { 0x8d54144754bffc8b, 0xBD240FFAE2C28D7B, 0x72abebb854bffc8b, 0xAB7E6D6B4AC39E18 },
-            { 0xa6f98171d7d9e1ff, 0xC0FA679AF96E3124, 0x59067e8ed7d9e1ff, 0xA1E77E206ABE1926 },
-            { 0x49b6478779b82e5b, 0xD53599464D1A5D5E, 0xb649b87879b82e5b, 0x368D0E6E3FE1EA42 },
-            { 0xd4184e97c7c6b12e, 0x680FB9A85CF87F02, 0x2be7b168c7c6b12e, 0x9C76031A70884878 },
-            { 0xcaeaac6eb1e1e847, 0x3E7F118BCD53E0B7, 0x35155391b1e1e847, 0x68D7454A6354E961 },
-            { 0xd3ef23f21c62d8fc, 0x8831A458417E9A64, 0x2c10dc0d1c62d8fc, 0x3272A8A9B0492ABB },
-            { 0x25dea086b2c71305, 0xCD2BC98DA8256ED0, 0xda215f79b2c71305, 0x1743FE4C0AB147D3 },
-            { 0x55b91ec107bef453, 0x709FBA067566D69B, 0xaa46e13e07bef453, 0x42888F2CFABC9A82 },
-            { 0xa6c79ffea4b986f5, 0x02F8C59885C24040, 0x59386001a4b986f5, 0x6051FB3377C7F4D7 }
+            { 0x4a28d313c14be57e, 0x4FC455744BB13F25, 0xb5d72cecc14be57e, 0xAF6CCE48FA0552BF },
+            { 0xfb870040f62f8a43, 0x0D87D666D6396022, 0x0478ffbff62f8a43, 0x1E366A199AF56951 },
+            { 0xfaa4aa317d1f419c, 0x2EF51DC7F3EDD9F3, 0x055b55ce7d1f419c, 0x940256666000FCAD },
+            { 0xbfdd81549096fdd5, 0x0F186F4E08A89739, 0x40227eab9096fdd5, 0x922FDB5416B6E579 },
+            { 0x8d54144754bffc8b, 0x8EC693FE33E5BD98, 0x72abebb854bffc8b, 0x2E1718554C3461F7 },
+            { 0xa6f98171d7d9e1ff, 0x18D3F095A7FD6F25, 0x59067e8ed7d9e1ff, 0xE245348D8F891C5A },
+            { 0x49b6478779b82e5b, 0x9BDCB43DBF604E9B, 0xb649b87879b82e5b, 0xE60C1BA9764A0814 },
+            { 0xd4184e97c7c6b12e, 0xDCE6EE8EA4FC7D01, 0x2be7b168c7c6b12e, 0x99F0879B412E95A8 },
+            { 0xcaeaac6eb1e1e847, 0x5048CF511F47DD62, 0x35155391b1e1e847, 0x71041D0388EB645D },
+            { 0xd3ef23f21c62d8fc, 0x3C059824E1D49218, 0x2c10dc0d1c62d8fc, 0x39076EADD2D00B92 },
+            { 0x25dea086b2c71305, 0x470406A3FE26872C, 0xda215f79b2c71305, 0xED31639E731A9ACD },
+            { 0x55b91ec107bef453, 0xEBD39014EA3B8047, 0xaa46e13e07bef453, 0x471C1689316C4C8C },
+            { 0xa6c79ffea4b986f5, 0x4220FDBC999C89CD, 0x59386001a4b986f5, 0xE3DEE77F0160AFF1 }
     };
 
     uint32_t diffCharacteristicToRound3 = 0xffffffff;
@@ -709,19 +711,19 @@ void crackKey2( const std::set< uint32_t >& subKeysK3, const std::set< uint32_t 
 {
     // [Plaintext 1, Ciphertext 1]
     std::vector< std::vector< uint64_t > > plaintexts = {
-            { 0x4a28d313c14be57e, 0x0A1EA4A827794303 },
-            { 0xfb870040f62f8a43, 0x12DF803607E99015 },
-            { 0xfaa4aa317d1f419c, 0x5D527DA3F87C07F5 },
-            { 0xbfdd81549096fdd5, 0x1B39BCBF5FFF6F7C },
-            { 0x8d54144754bffc8b, 0xBD240FFAE2C28D7B },
-            { 0xa6f98171d7d9e1ff, 0xC0FA679AF96E3124 },
-            { 0x49b6478779b82e5b, 0xD53599464D1A5D5E },
-            { 0xd4184e97c7c6b12e, 0x680FB9A85CF87F02 },
-            { 0xcaeaac6eb1e1e847, 0x3E7F118BCD53E0B7 },
-            { 0xd3ef23f21c62d8fc, 0x8831A458417E9A64 },
-            { 0x25dea086b2c71305, 0xCD2BC98DA8256ED0 },
-            { 0x55b91ec107bef453, 0x709FBA067566D69B },
-            { 0xa6c79ffea4b986f5, 0x02F8C59885C24040 }
+            { 0x4a28d313c14be57e, 0x4FC455744BB13F25 },
+            { 0xfb870040f62f8a43, 0x0D87D666D6396022 },
+            { 0xfaa4aa317d1f419c, 0x2EF51DC7F3EDD9F3 },
+            { 0xbfdd81549096fdd5, 0x0F186F4E08A89739 },
+            { 0x8d54144754bffc8b, 0x8EC693FE33E5BD98 },
+            { 0xa6f98171d7d9e1ff, 0x18D3F095A7FD6F25 },
+            { 0x49b6478779b82e5b, 0x9BDCB43DBF604E9B },
+            { 0xd4184e97c7c6b12e, 0xDCE6EE8EA4FC7D01 },
+            { 0xcaeaac6eb1e1e847, 0x5048CF511F47DD62 },
+            { 0xd3ef23f21c62d8fc, 0x3C059824E1D49218 },
+            { 0x25dea086b2c71305, 0x470406A3FE26872C },
+            { 0x55b91ec107bef453, 0xEBD39014EA3B8047 },
+            { 0xa6c79ffea4b986f5, 0x4220FDBC999C89CD }
     };
 
     std::cout << std::hex;
@@ -832,3 +834,4 @@ int main()
 
     return 0;
 }
+
