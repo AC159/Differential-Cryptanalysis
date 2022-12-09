@@ -10,7 +10,6 @@
 #include <cmath>
 #include <cassert>
 
-#define FINAL_ROUND 4
 #define NUM_OF_THREADS 4
 
 /*
@@ -22,22 +21,6 @@
 
     Found a master key of 0x034cd1c408808476
  */
-
-struct highProbabilityDifferential
-{
-    double probability;
-    std::vector< std::pair< uint32_t, uint32_t > > inputsAndOutputs;
-};
-
-auto lambda = []( const highProbabilityDifferential& diff1, const highProbabilityDifferential& diff2 ) -> bool
-{
-    if ( diff1.probability <= diff2.probability ) return true;
-    return false;
-};
-
-// Priority queue that contains all probabilities. The first element will be the highest probability
-std::priority_queue< highProbabilityDifferential, std::vector< highProbabilityDifferential >, std::function< bool(
-        highProbabilityDifferential, highProbabilityDifferential ) > > pq( lambda );
 
 // S-box Table
 int sBox[8][16] = {
@@ -121,133 +104,6 @@ uint32_t round_func( uint32_t x, uint32_t rkey )
     x = sbox_layer( x );
     x = permute( x );
     return x;
-}
-
-/* Function that tries to find the best possible differential characteristic based on their probabilities of occurrence. */
-void round_func_modified( uint32_t deltaX,
-                          int roundNbr,
-                          const std::vector< std::vector< std::vector< std::pair< uint32_t, int > >> >& sBoxDiffTables,
-                          double currentProbability, std::vector< std::pair< uint32_t, uint32_t > > deltaXs )
-{
-    // Base case
-    if ( roundNbr == FINAL_ROUND )
-    {
-        highProbabilityDifferential diff = { currentProbability, deltaXs };
-        pq.push( diff );
-        return;
-    }
-
-    // Extract the bits of all the s-boxes and determine which one is active
-    uint32_t bitmask = 0xffffffff;
-
-    uint32_t sBox1 = ( deltaX & ( bitmask << 28 ) ) >> 28;
-    uint32_t sBox2 = ( deltaX & ( ( bitmask << 24 ) & ( bitmask >> 4 ) ) ) >> 24;
-    uint32_t sBox3 = ( deltaX & ( ( bitmask << 20 ) & ( bitmask >> 8 ) ) ) >> 20;
-    uint32_t sBox4 = ( deltaX & ( ( bitmask << 16 ) & ( bitmask >> 12 ) ) ) >> 16;
-    uint32_t sBox5 = ( deltaX & ( ( bitmask << 12 ) & ( bitmask >> 16 ) ) ) >> 12;
-    uint32_t sBox6 = ( deltaX & ( ( bitmask << 8 ) & ( bitmask >> 20 ) ) ) >> 8;
-    uint32_t sBox7 = ( deltaX & ( ( bitmask << 4 ) & ( bitmask >> 24 ) ) ) >> 4;
-    uint32_t sBox8 = deltaX & ( bitmask >> 28 );
-
-    std::vector< std::pair< uint32_t, int > > sBox1DeltaY = sBoxDiffTables[ 0 ][ sBox1 ];
-    std::vector< std::pair< uint32_t, int > > sBox2DeltaY = sBoxDiffTables[ 1 ][ sBox2 ];
-    std::vector< std::pair< uint32_t, int > > sBox3DeltaY = sBoxDiffTables[ 2 ][ sBox3 ];
-    std::vector< std::pair< uint32_t, int > > sBox4DeltaY = sBoxDiffTables[ 3 ][ sBox4 ];
-    std::vector< std::pair< uint32_t, int > > sBox5DeltaY = sBoxDiffTables[ 4 ][ sBox5 ];
-    std::vector< std::pair< uint32_t, int > > sBox6DeltaY = sBoxDiffTables[ 5 ][ sBox6 ];
-    std::vector< std::pair< uint32_t, int > > sBox7DeltaY = sBoxDiffTables[ 6 ][ sBox7 ];
-    std::vector< std::pair< uint32_t, int > > sBox8DeltaY = sBoxDiffTables[ 7 ][ sBox8 ];
-
-    // Determine the number of active s-boxes
-    std::vector< std::pair< uint8_t, std::vector< std::pair< uint32_t, int > > > > activeSBoxes;
-    // the first parameter of the pair is the position of the s-box in the round function:
-    // i.e. starting from left to right: s-box 1 is at position 7, s-box 2 is at position 6 ...
-    // and s-box 8 is at position 0
-    // This will help us determine how much we should shift the bits when calculating the result
-
-    // Determine inactive s-boxes
-    std::vector< uint8_t > inactiveSBoxes;
-
-    if ( sBox1 > 0 )
-        activeSBoxes.emplace_back( 7, sBox1DeltaY );
-    else inactiveSBoxes.push_back( 7 );
-    if ( sBox2 > 0 )
-        activeSBoxes.emplace_back( 6, sBox2DeltaY );
-    else inactiveSBoxes.push_back( 6 );
-    if ( sBox3 > 0 )
-        activeSBoxes.emplace_back( 5, sBox3DeltaY );
-    else inactiveSBoxes.push_back( 5 );
-    if ( sBox4 > 0 )
-        activeSBoxes.emplace_back( 4, sBox4DeltaY );
-    else inactiveSBoxes.push_back( 4 );
-    if ( sBox5 > 0 )
-        activeSBoxes.emplace_back( 3, sBox5DeltaY );
-    else inactiveSBoxes.push_back( 3 );
-    if ( sBox6 > 0 )
-        activeSBoxes.emplace_back( 2, sBox6DeltaY );
-    else inactiveSBoxes.push_back( 2 );
-    if ( sBox7 > 0 )
-        activeSBoxes.emplace_back( 1, sBox7DeltaY );
-    else inactiveSBoxes.push_back( 1 );
-    if ( sBox8 > 0 )
-        activeSBoxes.emplace_back( 0, sBox8DeltaY );
-    else inactiveSBoxes.push_back( 0 );
-
-    // Generate all possibilities of active s-boxes to find the highest probability
-
-    // vector of iterators to generate all possibilities
-    std::vector< std::vector< std::pair< uint32_t, int > >::iterator > iterators( activeSBoxes.size() );
-
-    // Instantiate all iterators
-    for ( int i = 0; i < activeSBoxes.size(); ++i )
-    {
-        iterators[ i ] = activeSBoxes[ i ].second.begin();
-    }
-
-    // Odometer algorithm: https://stackoverflow.com/questions/1700079/howto-create-combinations-of-several-vectors-without-hardcoding-loops-in-c
-    while ( iterators[ 0 ] != activeSBoxes[ 0 ].second.end() )
-    {
-        std::vector< double > probabilities;
-        for ( const auto& it : iterators )
-        {
-            probabilities.push_back( it->second / 16.0 );
-        }
-
-        // Compute the probability of obtaining this result
-        double updatedProbability = std::accumulate( probabilities.begin(), probabilities.end(), 1.0,
-                                                     std::multiplies<>() ) * currentProbability;
-
-        if ( updatedProbability > 0 )
-        {
-            // All probabilities are greater than 0. This means that we can generate a result
-            uint32_t result = 0x00000000; // all non-active s-boxes will have zero at their position
-            for ( int i = 0; i < iterators.size(); ++i )
-            {
-                uint32_t deltaY = iterators[ i ]->first;
-                int shiftAmount = activeSBoxes[ i ].first * 4;
-                result |= deltaY << shiftAmount;
-            }
-
-            // Now we can permute and recurse on this result
-            uint32_t permutationResult = permute( result );
-
-            deltaXs.emplace_back( deltaX, permutationResult );
-
-            // The permutation result is going to be the input to the next round of the cipher
-            round_func_modified( permutationResult, roundNbr + 1, sBoxDiffTables, updatedProbability, deltaXs );
-
-            deltaXs.pop_back(); // backtrack
-        }
-
-        // Increment the odometer
-        int K = ( int ) iterators.size();
-        ++iterators[ K - 1 ]; // increment the last iterator
-        for ( int i = K - 1; ( i > 0 ) && ( iterators[ i ] == activeSBoxes[ i ].second.end() ); --i )
-        {
-            iterators[ i ] = activeSBoxes[ i ].second.begin(); // reset the iterator
-            ++iterators[ i - 1 ]; // increment the previous one
-        }
-    }
 }
 
 /* Optimization: mask is used to extract bits at certain position.
@@ -834,4 +690,3 @@ int main()
 
     return 0;
 }
-
