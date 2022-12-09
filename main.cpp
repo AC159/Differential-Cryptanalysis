@@ -8,8 +8,10 @@
 #include <thread>
 #include <future>
 #include <fstream>
+#include <cmath>
 
 #define FINAL_ROUND 4
+#define NUM_OF_THREADS 8
 
 struct highProbabilityDifferential
 {
@@ -382,75 +384,61 @@ void crackKey4()
     uint32_t lastRoundInputDifference = 0x8080D052;
     std::cout << std::hex; // numbers will be output in hex format
 
-    // workerThread( 0, 0xffffffff, deltaPairs, lastRoundInputDifference );
+    std::vector< std::packaged_task< std::set< uint32_t >( uint32_t,
+                                                           uint32_t,
+                                                           std::vector< std::vector< uint64_t > >,
+                                                           uint32_t
+    ) > > tasksForThreads( NUM_OF_THREADS );
 
-    // Start first thread
-    std::packaged_task< std::set< uint32_t >( uint32_t,
-                                              uint32_t,
-                                              std::vector< std::vector< uint64_t > >,
-                                              uint32_t
-    ) > task1 { workerThreadToCrackKey4 }; // Create task
-    auto future1 = task1.get_future();      // Get the future object.
+    std::vector< std::future< std::set< uint32_t > > > futures;
+    std::vector< std::thread > threads;
 
-    // std::packaged_task is move-only
-    std::thread t1( std::move( task1 ), 0, 0x40000000, deltaPairs, lastRoundInputDifference );
+    int increment = ( int ) std::pow( 2, 32 ) / NUM_OF_THREADS;
+    int begin = 0;
+    int end = increment;
 
-    // Start second thread
-    std::packaged_task< std::set< uint32_t >( uint32_t,
-                                              uint32_t,
-                                              std::vector< std::vector< uint64_t > >,
-                                              uint32_t
-    ) > task2 { workerThreadToCrackKey4 }; // Create task
-    auto future2 = task2.get_future();      // Get the future object.
+    for ( int i = 0; i < NUM_OF_THREADS; ++i )
+    {
+        std::packaged_task< std::set< uint32_t >( uint32_t,
+                                                  uint32_t,
+                                                  std::vector< std::vector< uint64_t > >,
+                                                  uint32_t
+        ) > task { workerThreadToCrackKey4 }; // Create task
+        futures.emplace_back( task.get_future() );      // Get the future object.
 
-    // std::packaged_task is move-only
-    std::thread t2( std::move( task2 ), 0x40000000, 0x7FFFFFFF, deltaPairs, lastRoundInputDifference );
+        // std::packaged_task is move-only
+        threads.emplace_back( std::move( task ), begin, end, deltaPairs, lastRoundInputDifference );
 
-    // Start third thread
-    std::packaged_task< std::set< uint32_t >( uint32_t,
-                                              uint32_t,
-                                              std::vector< std::vector< uint64_t > >,
-                                              uint32_t
-    ) > task3 { workerThreadToCrackKey4 }; // Create task
-    auto future3 = task3.get_future();      // Get the future object.
+        begin = end;
+        end += increment;
+    }
 
-    // std::packaged_task is move-only
-    std::thread t3( std::move( task3 ), 0x7FFFFFFF, 0xBFFFFFFF, deltaPairs, lastRoundInputDifference );
+    std::cout << "A total of " << NUM_OF_THREADS << " threads have started...\n";
 
-    // Start fourth threads
-    std::packaged_task< std::set< uint32_t >( uint32_t,
-                                              uint32_t,
-                                              std::vector< std::vector< uint64_t > >,
-                                              uint32_t
-    ) > task4 { workerThreadToCrackKey4 }; // Create task
-    auto future4 = task4.get_future();      // Get the future object.
+    // wait for all threads to finish
+    for ( std::thread& t : threads )
+    {
+        t.join();
+    }
 
-    // std::packaged_task is move-only
-    std::thread t4( std::move( task4 ), 0xBFFFFFFF, 0xFFFFFFFF, deltaPairs, lastRoundInputDifference );
+    std::cout << "All threads have finished their work for breaking sub-key k4...\n";
 
-    t1.join();
-    t2.join();
-    t3.join();
-    t4.join();
-
-    std::set< uint32_t > s1 = future1.get();
-    std::set< uint32_t > s2 = future2.get();
-    std::set< uint32_t > s3 = future3.get();
-    std::set< uint32_t > s4 = future4.get();
-
+    // Extract the result of each thread
     std::set< uint32_t > subKeysK4;
 
-    std::set_union( s1.begin(), s1.end(),
-                    s2.begin(), s2.end(),
-                    std::inserter( subKeysK4, std::begin( subKeysK4 ) )
-    );
+    for ( int i = 0; i < futures.size(); i += 2 )
+    {
+        std::set< uint32_t > set1 = futures[ i ].get();
+        std::set< uint32_t > set2 = futures[ i + 1 ].get();
 
-    std::set_union( s3.begin(), s3.end(),
-                    s4.begin(), s4.end(),
-                    std::inserter( subKeysK4, std::begin( subKeysK4 ) )
-    );
+        std::set_union(
+                set1.begin(), set1.end(),
+                set2.begin(), set2.end(),
+                std::inserter( subKeysK4, std::begin( subKeysK4 ) )
+        );
+    }
 
-    std::cout << "Final set has " << subKeysK4.size() << " sub-keys\n";
+    std::cout << "Final set has " << subKeysK4.size() << " candidate sub-keys k4\n";
 
     // Write all sub-keys to a file
     std::ofstream file( "subKeysK4" );
@@ -565,17 +553,28 @@ void crackKey3()
     uint32_t diffCharacteristicToRound3 = 0xffffffff;
     std::cout << std::hex;
 
-    std::thread t1( workerThreadToCrackKey3, 0, 0x40000000, subKeysK4, pairs, diffCharacteristicToRound3 );
-    std::thread t2( workerThreadToCrackKey3, 0x40000000, 0x7FFFFFFF, subKeysK4, pairs, diffCharacteristicToRound3 );
-    std::thread t3( workerThreadToCrackKey3, 0x7FFFFFFF, 0xBFFFFFFF, subKeysK4, pairs, diffCharacteristicToRound3 );
-    std::thread t4( workerThreadToCrackKey3, 0xBFFFFFFF, 0xFFFFFFFF, subKeysK4, pairs, diffCharacteristicToRound3 );
+    std::vector< std::thread > threads;
+    int increment = ( int ) std::pow( 2, 32 ) / NUM_OF_THREADS;
+    int begin = 0;
+    int end = increment;
 
-    std::cout << "All threads have started...\n";
+    for ( int i = 0; i < NUM_OF_THREADS; ++i )
+    {
+        threads.emplace_back( workerThreadToCrackKey3, begin, end, subKeysK4, pairs, diffCharacteristicToRound3 );
 
-    t1.join();
-    t2.join();
-    t3.join();
-    t4.join();
+        begin = end;
+        end += increment;
+    }
+
+    std::cout << "A total of " << NUM_OF_THREADS << " threads have started...\n";
+
+    // wait for all threads to finish
+    for ( std::thread& t : threads )
+    {
+        t.join();
+    }
+
+    std::cout << "All threads have finished their work for breaking sub-key k4...\n";
 }
 
 int main()
