@@ -9,9 +9,16 @@
 #include <future>
 #include <fstream>
 #include <cmath>
+#include <cassert>
 
 #define FINAL_ROUND 4
-#define NUM_OF_THREADS 8
+#define NUM_OF_THREADS 4
+
+/*
+ Compile/Run instructions:
+    g++ -O3 main.cpp -o wes-cryptanalysis
+    ./wes-cryptanalysis
+ */
 
 struct highProbabilityDifferential
 {
@@ -364,7 +371,7 @@ std::set< uint32_t > workerThreadToCrackKey4( uint32_t begin,
     return set;
 }
 
-void crackKey4()
+std::set< uint32_t > crackKey4()
 {
     // Let's try to break the last round partial key k4
 
@@ -413,7 +420,7 @@ void crackKey4()
         end += increment;
     }
 
-    std::cout << "A total of " << NUM_OF_THREADS << " threads have started...\n";
+    std::cout << "A total of " << NUM_OF_THREADS << " threads have started to break round 4...\n";
 
     // wait for all threads to finish
     for ( std::thread& t : threads )
@@ -439,17 +446,16 @@ void crackKey4()
     }
 
     std::cout << "Final set has " << subKeysK4.size() << " candidate sub-keys k4\n";
-
-    // Write all sub-keys to a file
-    std::ofstream file( "subKeysK4" );
-    for ( uint32_t key : subKeysK4 )
-    {
-        file << std::hex << key << "\n";
-    }
-    file.close();
+    return subKeysK4;
 }
 
-void workerThreadToCrackKey3(
+struct candidateKeysK3K4
+{
+    std::set< uint32_t > candidateK3s;
+    std::set< uint32_t > candidateK4s;
+};
+
+candidateKeysK3K4 workerThreadToCrackKey3(
         uint32_t begin,
         uint32_t end,
         std::set< uint32_t > subKeysK4,
@@ -457,15 +463,33 @@ void workerThreadToCrackKey3(
         uint32_t diffCharacteristicToRound3
 )
 {
-    for ( uint32_t k3 = begin; k3 < end; ++k3 )
+    std::set< uint32_t > candidateK3s;
+    std::set< uint32_t > candidateK4s;
+
+    for ( uint32_t leftMostBitsOfK3 = begin; leftMostBitsOfK3 < end; ++leftMostBitsOfK3 )
     {
         for ( uint32_t k4 : subKeysK4 )
         {
             int score = 0;
+
+            // Half of key k3 is already present in our candidate key k4, we can simply extract those bits
+            uint16_t rightMostBitsOfK3 = 0x0;
+
+            int bitPosition = 30;
+            int shiftAmount = 15;
+            for ( int i = 0; i < 16; ++i )
+            {
+                // Take the bit that is shared between k3 and k4
+                uint16_t correspondingBitInK4 = ( k4 & ( 1 << bitPosition ) ) > 0 ? 1 : 0;
+                rightMostBitsOfK3 |= ( correspondingBitInK4 << shiftAmount );
+                bitPosition -= 2;
+                --shiftAmount;
+            }
+
+            uint32_t k3 = ( leftMostBitsOfK3 << 16 ) | rightMostBitsOfK3;
+
             for ( const std::vector< uint64_t >& pair : pairs )
             {
-                // uint32_t key = 0x0BCA3B98;
-
                 uint64_t c1 = pair[ 1 ];
                 uint64_t c2 = pair[ 3 ];
 
@@ -480,7 +504,6 @@ void workerThreadToCrackKey3(
                 uint32_t result1 = round_func( rightHalfC1, k4 ) ^ leftHalfC1;
                 uint32_t result2 = round_func( rightHalfC2, k4 ) ^ leftHalfC2;
 
-                // uint32_t k3 = 0xA6C91854;
                 uint32_t round3Result1 = round_func( result1, k3 );
                 uint32_t round3Result2 = round_func( result2, k3 );
 
@@ -488,85 +511,76 @@ void workerThreadToCrackKey3(
 
                 if ( diffCharacteristicToRound3 == out )
                 {
-                    // Before printing that we have found a match for k3, we need to make sure that bits in k3 match the
-                    // corresponding bits of k4
-                    bool allBitsMatch = true;
-                    int bitPosition = 30;
-                    for ( int i = 17; i <= 32; ++i )
-                    {
-                        // Extract the current bit of sub-key k3 and place it at the right position in the final integer
-                        uint8_t ithBitOfK3 = ( k3 & ( 0x80000000 >> ( i - 1 ) ) ) > 0 ? 1 : 0;
-                        uint8_t correspondingBitInK4 = ( k4 & ( 1 << bitPosition ) ) > 0 ? 1 : 0;
-
-                        if ( ithBitOfK3 != correspondingBitInK4 )
-                        {
-                            allBitsMatch = false;
-                            break;
-                        }
-                        bitPosition -= 2;
-                    }
-
-                    if ( allBitsMatch )
-                    {
-                        ++score;
-                    }
+                    ++score;
                 }
             }
+
             if ( score == pairs.size() )
             {
-                std::cout << "Found sub-keys k3 & k4: " << "0x" << k3 << ", 0x" << k4 << std::endl;
+                candidateK3s.insert( k3 );
+                candidateK4s.insert( k4 );
             }
         }
     }
+    return candidateKeysK3K4 { candidateK3s, candidateK4s };
 }
 
-void crackKey3()
+std::pair< std::set< uint32_t >, std::set< uint32_t > > crackKey3( const std::set< uint32_t >& candidateKeysK4 )
 {
     // Let's break sub-key k3
-    std::set< uint32_t > subKeysK4;
-    std::ifstream file( "subKeysK4" );
-    std::string subKey;
-    while ( getline( file, subKey ) )
-    {
-        subKeysK4.insert( std::stoul( subKey, nullptr, 16 ) );
-    }
-    file.close();
-
-    std::cout << "Finished loading sub-keys into set...proceeding with cracking round 3\n";
+    std::cout << "\nFinished loading sub-keys into set...proceeding with cracking round 3\n";
 
     // [Plaintext 1, Ciphertext 1, P2, C2]
     std::vector< std::vector< uint64_t > > pairs = {
-            { 0xe0a621281e76a643, 0xFF3CCAC4EE3FFC8D, 0x1f59ded71e76a643, 0xB67A34C677C08000 },
-            { 0x9d5da5a9eff0f367, 0xF735CA49CF34C3BD, 0x62a25a56eff0f367, 0xA2F7254BC9D2FEF9 },
-            { 0x1629032bf2d0f365, 0x19CCF3B531745F36, 0xe9d6fcd4f2d0f365, 0x50BB3F6659250D1C },
-            { 0xf2265d81fc1bd964, 0xBE9D1520BEA28942, 0x0dd9a27efc1bd964, 0x41FFD51AA46DBFB4 },
-            { 0x03a54c0a20e8f05d, 0x59813499F0F5B72C, 0xfc5ab3f520e8f05d, 0xECF7D87793A6DB41 },
-            { 0x237f61071881097b, 0xCA2FD612D8659769, 0xdc809ef81881097b, 0x86270DF629C2CD33 },
-            { 0x44a3c3ecbdb612a2, 0xD6F435EF0712C355, 0xbb5c3c13bdb612a2, 0xD25C06AB2DC7F6AE },
-            { 0x1f27d48d2c0fe9c8, 0x6EF64F5918F4138C, 0xe0d82b722c0fe9c8, 0x49C37771E5E57D8E },
-            { 0x1196d39c49a80274, 0xBE4F6B195A65FE95, 0xee692c6349a80274, 0x3E9E2593047B520E },
-            { 0x809606499db89b35, 0x2B90DDAF8BB4E8E7, 0x7f69f9b69db89b35, 0x0FF0939D84E7BF9A },
-            { 0x81cbfdba3388b1ba, 0xF6053272C01CB9CB, 0x7e3402453388b1ba, 0x70AF7CAA283A124C },
-            { 0x4a28d313c14be57e, 0x0A1EA4A827794303, 0xb5d72cecc14be57e, 0x84EE886538EA684D }
+            { 0x4a28d313c14be57e, 0x0A1EA4A827794303, 0xb5d72cecc14be57e, 0x84EE886538EA684D },
+            { 0xfb870040f62f8a43, 0x12DF803607E99015, 0x0478ffbff62f8a43, 0xACBC31D5C88550BD },
+            { 0xfaa4aa317d1f419c, 0x5D527DA3F87C07F5, 0x055b55ce7d1f419c, 0xFD389A200E034942 },
+            { 0xbfdd81549096fdd5, 0x1B39BCBF5FFF6F7C, 0x40227eab9096fdd5, 0xBAEDE607106F5B4E },
+            { 0x8d54144754bffc8b, 0xBD240FFAE2C28D7B, 0x72abebb854bffc8b, 0xAB7E6D6B4AC39E18 },
+            { 0xa6f98171d7d9e1ff, 0xC0FA679AF96E3124, 0x59067e8ed7d9e1ff, 0xA1E77E206ABE1926 },
+            { 0x49b6478779b82e5b, 0xD53599464D1A5D5E, 0xb649b87879b82e5b, 0x368D0E6E3FE1EA42 },
+            { 0xd4184e97c7c6b12e, 0x680FB9A85CF87F02, 0x2be7b168c7c6b12e, 0x9C76031A70884878 },
+            { 0xcaeaac6eb1e1e847, 0x3E7F118BCD53E0B7, 0x35155391b1e1e847, 0x68D7454A6354E961 },
+            { 0xd3ef23f21c62d8fc, 0x8831A458417E9A64, 0x2c10dc0d1c62d8fc, 0x3272A8A9B0492ABB },
+            { 0x25dea086b2c71305, 0xCD2BC98DA8256ED0, 0xda215f79b2c71305, 0x1743FE4C0AB147D3 },
+            { 0x55b91ec107bef453, 0x709FBA067566D69B, 0xaa46e13e07bef453, 0x42888F2CFABC9A82 },
+            { 0xa6c79ffea4b986f5, 0x02F8C59885C24040, 0x59386001a4b986f5, 0x6051FB3377C7F4D7 }
     };
 
     uint32_t diffCharacteristicToRound3 = 0xffffffff;
     std::cout << std::hex;
 
+    std::vector< std::packaged_task< std::set< uint32_t >( uint32_t,
+                                                           uint32_t,
+                                                           std::vector< std::vector< uint64_t > >,
+                                                           uint32_t
+    ) > > tasksForThreads( NUM_OF_THREADS );
+
+    std::vector< std::future< candidateKeysK3K4 > > futures;
     std::vector< std::thread > threads;
-    int increment = ( int ) std::pow( 2, 32 ) / NUM_OF_THREADS;
+
+    int increment = ( int ) std::pow( 2, 16 ) / NUM_OF_THREADS;
     int begin = 0;
     int end = increment;
 
     for ( int i = 0; i < NUM_OF_THREADS; ++i )
     {
-        threads.emplace_back( workerThreadToCrackKey3, begin, end, subKeysK4, pairs, diffCharacteristicToRound3 );
+        std::packaged_task< candidateKeysK3K4( uint32_t begin,
+                                               uint32_t end,
+                                               std::set< uint32_t > subKeysK4,
+                                               std::vector< std::vector< uint64_t > > pairs,
+                                               uint32_t diffCharacteristicToRound3
+        ) > task { workerThreadToCrackKey3 }; // Create task
+        futures.emplace_back( task.get_future() );      // Get the future object.
+
+        // std::packaged_task is move-only
+        threads.emplace_back( std::move( task ), begin, end, candidateKeysK4, pairs, diffCharacteristicToRound3 );
 
         begin = end;
         end += increment;
     }
 
-    std::cout << "A total of " << NUM_OF_THREADS << " threads have started...\n";
+    std::cout << "A total of " << NUM_OF_THREADS << " threads have started to break round 3...\n";
 
     // wait for all threads to finish
     for ( std::thread& t : threads )
@@ -574,7 +588,232 @@ void crackKey3()
         t.join();
     }
 
-    std::cout << "All threads have finished their work for breaking sub-key k4...\n";
+    std::cout << "All threads have finished their work for breaking sub-key k3...\n";
+
+    // Extract the result of each thread
+    std::set< uint32_t > k4;
+    std::set< uint32_t > k3;
+
+    for ( int i = 0; i < futures.size(); i += 2 )
+    {
+        candidateKeysK3K4 keys1 = futures[ i ].get();
+        candidateKeysK3K4 keys2 = futures[ i + 1 ].get();
+
+        std::set_union(
+                keys1.candidateK3s.begin(), keys1.candidateK3s.end(),
+                keys2.candidateK3s.begin(), keys2.candidateK3s.end(),
+                std::inserter( k3, std::begin( k3 ) )
+        );
+
+        std::set_union(
+                keys1.candidateK4s.begin(), keys1.candidateK4s.end(),
+                keys2.candidateK4s.begin(), keys2.candidateK4s.end(),
+                std::inserter( k4, std::begin( k4 ) )
+        );
+    }
+
+    std::cout << "K4 candidate keys: \n";
+    for ( uint32_t k : k4 )
+    {
+        std::cout << k << std::endl;
+    }
+
+    std::cout << "\nK3 candidate keys: \n";
+    for ( uint32_t k : k3 )
+    {
+        std::cout << k << std::endl;
+    }
+
+    return { k3, k4 };
+}
+
+struct candidateKeysK2K3K4
+{
+    std::set< uint32_t > candidateK2s;
+    std::set< uint32_t > candidateK3s;
+    std::set< uint32_t > candidateK4s;
+};
+
+candidateKeysK2K3K4 workerThreadToCrackKey2(
+        uint32_t begin,
+        uint32_t end,
+        std::set< uint32_t > subKeysK3,
+        std::set< uint32_t > subKeysK4,
+        std::vector< std::vector< uint64_t > > plaintextPairs
+)
+{
+    std::set< uint32_t > candidateK2s;
+    std::set< uint32_t > candidateK3s;
+    std::set< uint32_t > candidateK4s;
+
+    for ( uint32_t k2 = begin; k2 < end; ++k2 )
+    {
+        for ( uint32_t k3 : subKeysK3 )
+        {
+            // half of the bits of k2 are already present in k3, so we can simply check if the bits between k2 and k3 match
+            uint16_t leftMostBitsOfK2 = 0x0;
+
+            int bitPosition = 30;
+            int shiftAmount = 15;
+            for ( int i = 0; i < 16; ++i )
+            {
+                // Take the bit that is shared between k2 and k3
+                uint16_t bitInK2 = ( k2 & ( 1 << bitPosition ) ) > 0 ? 1 : 0;
+                leftMostBitsOfK2 |= ( bitInK2 << shiftAmount );
+                bitPosition -= 2;
+                --shiftAmount;
+            }
+
+            // First 16 bits of k2 that should be in k3
+            uint16_t firstHalfOfK3 = k3 >> 16;
+
+            if ( leftMostBitsOfK2 != firstHalfOfK3 ) continue; // shared bits between k2 and k3 don't match
+
+            for ( uint32_t k4 : subKeysK4 )
+            {
+                int score = 0;
+                for ( const std::vector< uint64_t >& plaintext : plaintextPairs )
+                {
+                    uint32_t L1 = plaintext[ 0 ] & 0xffffffff;
+                    uint32_t CL = plaintext[ 1 ] >> 32;
+                    uint32_t CR = plaintext[ 1 ] & 0xffffffff;
+
+                    uint32_t R2 = round_func( CR, k4 ) ^ CL;
+                    uint32_t L2 = round_func( R2, k3 ) ^ CR;
+
+                    uint32_t R1 = L2;
+                    uint32_t L1Backwards = round_func( R1, k2 ) ^ R2;
+
+                    if ( L1Backwards == L1 )
+                    {
+                        ++score; // we have a match for k2
+                    }
+                }
+
+                if ( score == plaintextPairs.size() )
+                {
+                    std::cout << "Found a matching k2! -> 0x" << k2 << std::endl;
+                    candidateK2s.insert( k2 );
+                    candidateK3s.insert( k3 );
+                    candidateK4s.insert( k4 );
+                }
+            }
+        }
+    }
+
+    return candidateKeysK2K3K4 { candidateK2s, candidateK3s, candidateK4s };
+}
+
+void crackKey2( const std::set< uint32_t >& subKeysK3, const std::set< uint32_t >& subKeysK4 )
+{
+    // [Plaintext 1, Ciphertext 1]
+    std::vector< std::vector< uint64_t > > plaintexts = {
+            { 0x4a28d313c14be57e, 0x0A1EA4A827794303 },
+            { 0xfb870040f62f8a43, 0x12DF803607E99015 },
+            { 0xfaa4aa317d1f419c, 0x5D527DA3F87C07F5 },
+            { 0xbfdd81549096fdd5, 0x1B39BCBF5FFF6F7C },
+            { 0x8d54144754bffc8b, 0xBD240FFAE2C28D7B },
+            { 0xa6f98171d7d9e1ff, 0xC0FA679AF96E3124 },
+            { 0x49b6478779b82e5b, 0xD53599464D1A5D5E },
+            { 0xd4184e97c7c6b12e, 0x680FB9A85CF87F02 },
+            { 0xcaeaac6eb1e1e847, 0x3E7F118BCD53E0B7 },
+            { 0xd3ef23f21c62d8fc, 0x8831A458417E9A64 },
+            { 0x25dea086b2c71305, 0xCD2BC98DA8256ED0 },
+            { 0x55b91ec107bef453, 0x709FBA067566D69B },
+            { 0xa6c79ffea4b986f5, 0x02F8C59885C24040 }
+    };
+
+    std::cout << std::hex;
+
+    std::vector< std::packaged_task< std::set< uint32_t >( uint32_t,
+                                                           uint32_t,
+                                                           std::vector< std::vector< uint64_t > >
+    ) > > tasksForThreads( NUM_OF_THREADS );
+
+    std::vector< std::future< candidateKeysK2K3K4 > > futures;
+    std::vector< std::thread > threads;
+
+    int increment = ( int ) std::pow( 2, 32 ) / NUM_OF_THREADS;
+    int begin = 0;
+    int end = increment;
+
+    for ( int i = 0; i < NUM_OF_THREADS; ++i )
+    {
+        std::packaged_task< candidateKeysK2K3K4(
+                uint32_t,
+                uint32_t,
+                std::set< uint32_t >,
+                std::set< uint32_t >,
+                std::vector< std::vector< uint64_t > >
+        ) > task { workerThreadToCrackKey2 }; // Create task
+
+        futures.emplace_back( task.get_future() );      // Get the future object.
+
+        // std::packaged_task is move-only
+        threads.emplace_back( std::move( task ), begin, end, subKeysK3, subKeysK4, plaintexts );
+
+        begin = end;
+        end += increment;
+    }
+
+    std::cout << "A total of " << NUM_OF_THREADS << " threads have started to break round 2...\n";
+
+    // wait for all threads to finish
+    for ( std::thread& t : threads )
+    {
+        t.join();
+    }
+
+    std::cout << "\nAll threads have finished their work for breaking sub-key k2...\n";
+
+    // Extract the result of each thread
+    std::set< uint32_t > k4;
+    std::set< uint32_t > k3;
+    std::set< uint32_t > k2;
+
+    for ( int i = 0; i < futures.size(); i += 2 )
+    {
+        candidateKeysK2K3K4 keys1 = futures[ i ].get();
+        candidateKeysK2K3K4 keys2 = futures[ i + 1 ].get();
+
+        std::set_union(
+                keys1.candidateK2s.begin(), keys1.candidateK2s.end(),
+                keys2.candidateK2s.begin(), keys2.candidateK2s.end(),
+                std::inserter( k2, std::begin( k2 ) )
+        );
+
+        std::set_union(
+                keys1.candidateK3s.begin(), keys1.candidateK3s.end(),
+                keys2.candidateK3s.begin(), keys2.candidateK3s.end(),
+                std::inserter( k3, std::begin( k3 ) )
+        );
+
+        std::set_union(
+                keys1.candidateK4s.begin(), keys1.candidateK4s.end(),
+                keys2.candidateK4s.begin(), keys2.candidateK4s.end(),
+                std::inserter( k4, std::begin( k4 ) )
+        );
+    }
+
+    std::cout << "\nK2 candidate keys: \n";
+    for ( uint32_t k : k2 )
+    {
+        std::cout << k << std::endl;
+    }
+
+    std::cout << "\nK4 candidate keys: \n";
+    for ( uint32_t k : k4 )
+    {
+        std::cout << k << std::endl;
+    }
+
+    assert( k2.size() == 1 );
+    assert( k4.size() == 1 );
+
+    uint64_t firstHalf = *k2.begin();
+    uint64_t masterKey = ( firstHalf << 32 ) | *k4.begin();
+
+    std::cout << std::hex << "Found master key! -> 0x" << masterKey << std::endl;
 }
 
 int main()
@@ -586,8 +825,9 @@ int main()
     std::vector< std::vector< std::vector< std::pair< uint32_t, int > >> > optimizedDiffTables = optimizeDifferenceDistributionTables(
             diffTables );
 
-    crackKey4();
-    crackKey3();
+    std::set< uint32_t > candidateKeysK4 = crackKey4();
+    std::pair< std::set< uint32_t >, std::set< uint32_t > > k3AndK4 = crackKey3( candidateKeysK4 );
+    crackKey2( k3AndK4.first, k3AndK4.second );
 
     return 0;
 }
